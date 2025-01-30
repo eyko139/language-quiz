@@ -1,0 +1,22 @@
+meta {
+  name: Save new word
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://localhost:8080/save-word
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  User-Agent: insomnia/10.0.0
+}
+
+body:json {
+  {
+  	"message": "Bier"
+  }
+}

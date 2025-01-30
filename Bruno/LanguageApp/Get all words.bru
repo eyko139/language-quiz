@@ -1,0 +1,19 @@
+meta {
+  name: Get all words
+  type: http
+  seq: 2
+}
+
+get {
+  url: http://localhost:8080/all-words
+  body: none
+  auth: none
+}
+
+headers {
+  User-Agent: insomnia/10.0.0
+}
+
+script:pre-request {
+  console.log(hello)
+}
