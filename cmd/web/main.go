@@ -1,24 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
-    "fmt"
 
 	"github.com/eyko139-language-app/cmd/env"
 )
 
-
 func main() {
 
 	appEnv := env.New()
-    
-    fmt.Println("setting up...")
+
+	fmt.Println("setting up...")
 	app := NewApp(appEnv)
 
-
 	srv := http.Server{
-		ErrorLog:     app.Errlog,
+		ErrorLog:     app.ErrorLog,
 		Addr:         ":" + appEnv.AppPort,
 		Handler:      app.Routes(),
 		IdleTimeout:  time.Minute,
@@ -26,10 +24,8 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-    app.Infolog.Printf("Starting server on %s", srv.Addr)
-    err := srv.ListenAndServe()
-	app.Errlog.Fatal(err)
+	app.InfoLog.Printf("Starting server on %s", srv.Addr)
+	err := srv.ListenAndServe()
+	app.ErrorLog.Fatal(err)
 
 }
-
-

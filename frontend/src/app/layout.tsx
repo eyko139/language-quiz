@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Container,
+  Box,
+} from "@mui/material";
+import Link from "next/link";
+import { ContentContainer } from "./layout.styles";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +37,23 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <AppBar position="static">
+          <Toolbar>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>
+              QUIZ App
+            </Typography>
+            <Button color="inherit" component={Link} href="/">
+              Home
+            </Button>
+            <Button color="inherit" component={Link} href="/quiz">
+              Quiz
+            </Button>
+            <Button color="inherit" component={Link} href="/manage">
+              Manage
+            </Button>
+          </Toolbar>
+        </AppBar>
+        <div>{children}</div>
       </body>
     </html>
   );

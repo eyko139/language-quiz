@@ -15,30 +15,33 @@ const (
         CREATE TABLE IF NOT EXISTS words (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         time DATETIME NOT NULL,
-        word TEXT,
-        t_1 TEXT,
-        t_2 TEXT,
-        t_3 TEXT,
-        t_4 TEXT
+        word TEXT unique,
+        t_1 TEXT NULL,
+        t_2 TEXT NULL,
+        t_3 TEXT NULL,
+        t_4 TEXT NULL,
+        description TEXT NULL
         );
         `
 )
 
 type Word struct {
-    ID int `json:"id" db:"id"`
+	ID           int       `json:"id" db:"id"`
 	Word         string    `json:"word" db:"word"`
 	Translation1 string    `json:"t_1" db:"t_1"`
 	Translation2 string    `json:"t_2" db:"t_2"`
 	Translation3 string    `json:"t_3" db:"t_3"`
 	Translation4 string    `json:"t_4" db:"t_4"`
 	Time         time.Time `json:"time" db:"time"`
+	Description  string    `json:"description" db:"description"`
 }
 
 type WordModelInt interface {
 	GetWord(word string) (Word, error)
-	GetAllWords() ([]Word, error)
+	GetAllWords() ([]Word, int, float64, error)
 	AddWord(word string) (int64, error)
 	Translate() ([]string, error)
+	AddText(text string) error
 }
 
 type WordModel struct {
@@ -49,28 +52,27 @@ type WordModel struct {
 
 func NewWordModel(env *env.Env) (*WordModel, error) {
 
-    fmt.Println("init db")
+	fmt.Println("init db")
 	db, err := sql.Open("sqlite3", env.DB_FILE)
 
 	if err != nil {
 		return nil, err
 	}
 
-    fmt.Println("creating table")
+	fmt.Println("creating table")
 	_, err = db.Exec(createDB)
-
 
 	if err != nil {
 		return nil, err
 	}
 
-    fmt.Println("init GPT client")
+	fmt.Println("init GPT client")
 	gpt, err := NewGPT(env)
 
 	if err != nil {
 		return nil, err
 	}
-    fmt.Println("GPT client finished")
+	fmt.Println("GPT client finished")
 
 	return &WordModel{Db: db, env: env, GPT: gpt}, nil
 }
@@ -79,25 +81,59 @@ func (m *WordModel) GetWord(word string) (Word, error) {
 	return Word{}, nil
 }
 
-func (m *WordModel) GetAllWords() ([]Word, error) {
+func (m *WordModel) GetAllWords() ([]Word, int, float64, error) {
 	rows, err := m.Db.Query("select * from words where t_1 is not null;")
 
+	var translated, untranslated sql.NullInt32
+	var percentage sql.NullFloat64
+
+	err = m.Db.QueryRow(`
+    SELECT 
+        COUNT(CASE WHEN t_1 IS NOT NULL THEN 1 END) AS translated,
+        COUNT(CASE WHEN t_1 IS NULL THEN 1 END) AS untranslated,
+        (COUNT(CASE WHEN t_1 IS NULL THEN 1 END) * 100.0) / COUNT(*) AS percentage_untranslated
+    FROM words;
+`).Scan(&translated, &untranslated, &percentage)
+
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
 	var words []Word
 
 	for rows.Next() {
-		var word Word
-        err := rows.Scan(&word.ID, &word.Time, &word.Word, &word.Translation1, &word.Translation2, &word.Translation3, &word.Translation4,)
-        if err != nil {
-            return nil, err
-        }
-        words = append(words, word)
+		var id int
+		var wordString string
+		var time time.Time
+		var t1, t2, t3, t4, description sql.NullString
+		err := rows.Scan(&id, &time, &wordString, &t1, &t2, &t3, &t4, &description)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		var word = Word{
+			ID:           id,
+			Word:         wordString,
+			Translation1: t1.String,
+			Translation2: t2.String,
+			Translation3: t3.String,
+			Translation4: t4.String,
+			Time:         time,
+			Description:  description.String,
+		}
+		words = append(words, word)
 	}
 
-	return words, nil
+	if translated.Valid && untranslated.Valid && percentage.Valid {
+		return words, int(translated.Int32 + untranslated.Int32), float64(percentage.Float64), nil
+	}
+
+	return words, 0, 0, nil
+}
+
+func (m *WordModel) AddText(text string) error {
+	translations := m.GPT.TranslateText(text)
+
+	return m.saveWords(translations)
 }
 
 func (m *WordModel) AddWord(newWord string) (int64, error) {
@@ -144,7 +180,25 @@ func (m *WordModel) Translate() ([]string, error) {
 
 	defer rows.Close()
 
+	fmt.Println(wordsToTranslate)
 	translations := m.GPT.GetTranslations(wordsToTranslate)
+
+	return m.updateWord(translations)
+
+}
+
+func (m *WordModel) saveWords(translation []GptWord) error {
+	insertWord := "INSERT INTO words (time, word, t_1, t_2, t_3, t_4, description) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	for _, t := range translation {
+		_, err := m.Db.Exec(insertWord, time.Now(), t.Word, t.T_1, t.T_2, t.T_3, t.T_4, t.Description)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *WordModel) updateWord(translations []GptWord) ([]string, error) {
 
 	updateWord := "update words set t_1 = ?, t_2 = ?, t_3 = ?, t_4 = ? where word = ?;"
 
@@ -157,7 +211,7 @@ func (m *WordModel) Translate() ([]string, error) {
 		}
 	}
 
-	rows, err = m.Db.Query("select id, time, word from words where t_1 is not null;")
+	rows, err := m.Db.Query("select id, time, word from words where t_1 is not null;")
 
 	if err != nil {
 		return nil, err

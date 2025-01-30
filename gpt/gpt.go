@@ -3,8 +3,10 @@ package words
 import (
 	"context"
 	"encoding/json"
-	"github.com/eyko139-language-app/cmd/env"
+	"fmt"
 	"strings"
+
+	"github.com/eyko139-language-app/cmd/env"
 
 	core "github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
@@ -57,17 +59,18 @@ func initClient(env *env.Env) (*azopenai.Client, error) {
 }
 
 type GptWord struct {
-	Word string `json:"word"`
-	T_1  string `json:"t_1"`
-	T_2  string `json:"t_2"`
-	T_3  string `json:"t_3"`
-	T_4  string `json:"t_4"`
+	Word        string `json:"word"`
+	T_1         string `json:"t_1"`
+	T_2         string `json:"t_2"`
+	T_3         string `json:"t_3"`
+	T_4         string `json:"t_4"`
+	Description string `json:"description"`
 }
 
 func (g *GPT) GetTranslations(words []string) []GptWord {
 
 	modelDeploymentID := "gpt-4o"
-	maxTokens := int32(400)
+	maxTokens := int32(2000)
 
 	var translations []GptWord
 
@@ -81,12 +84,29 @@ func (g *GPT) GetTranslations(words []string) []GptWord {
 		MaxTokens:      &maxTokens,
 	}, nil)
 
-	// for _, choice := range resp.Choices {
-	// 	fmt.Println(*choice.Message.Content)
-	// }
+	err := json.Unmarshal([]byte(*resp.Choices[0].Message.Content), &translations)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return translations
+}
 
-	var answer string
-	messages = append(messages, &azopenai.ChatRequestUserMessage{Content: azopenai.NewChatRequestUserMessageContent(answer)})
+func (g *GPT) TranslateText(text string) []GptWord {
+
+	modelDeploymentID := "gpt-4o"
+	maxTokens := int32(5000)
+
+	var translations []GptWord
+
+	messages = append(messages, &azopenai.ChatRequestUserMessage{Content: azopenai.NewChatRequestUserMessageContent(text)})
+
+	resp, _ := client.GetChatCompletions(context.TODO(), azopenai.ChatCompletionsOptions{
+		// This is a conversation in progress.
+		// NOTE: all messages count against token usage for this API.
+		Messages:       messages,
+		DeploymentName: &modelDeploymentID,
+		MaxTokens:      &maxTokens,
+	}, nil)
 
 	json.Unmarshal([]byte(*resp.Choices[0].Message.Content), &translations)
 	return translations

@@ -9,8 +9,8 @@ import (
 )
 
 type App struct {
-	Errlog    *log.Logger
-	Infolog   *log.Logger
+	ErrorLog  *log.Logger
+	InfoLog   *log.Logger
 	WordModel words.WordModelInt
 }
 
@@ -25,8 +25,8 @@ func NewApp(env *env.Env) *App {
 	}
 
 	return &App{
-		Errlog:    errLog,
-		Infolog:   infoLog,
+		ErrorLog:  errLog,
+		InfoLog:   infoLog,
 		WordModel: wordModel,
 	}
 }
