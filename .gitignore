@@ -6,5 +6,7 @@ _go
 .log
 .next
 tmp
+.envrc
+environments
 
 
