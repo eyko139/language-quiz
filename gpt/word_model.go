@@ -20,7 +20,10 @@ const (
         t_2 TEXT NULL,
         t_3 TEXT NULL,
         t_4 TEXT NULL,
-        description TEXT NULL
+        description TEXT NULL,
+        timesQuizzed INTEGER DEFAULT 0,
+        timesCorrect INTEGER DEFAULT 0, 
+        timesFalse INTEGER DEFAULT 0
         );
         `
 )
@@ -34,6 +37,9 @@ type Word struct {
 	Translation4 string    `json:"t_4" db:"t_4"`
 	Time         time.Time `json:"time" db:"time"`
 	Description  string    `json:"description" db:"description"`
+	TimesQuizzed int       `json:"timesQuizzed" db:"timesQuizzed"`
+	TimesCorrect int       `json:"timesCorrect" db:"timesCorrect"`
+	TimesFalse   int       `json:"timesFalse" db:"timesFalse"`
 }
 
 type WordModelInt interface {
@@ -42,6 +48,7 @@ type WordModelInt interface {
 	AddWord(word string) (int64, error)
 	Translate() ([]string, error)
 	AddText(text string) error
+	EvalAnswer(selectedTranslation string, wordId int) error
 }
 
 type WordModel struct {
@@ -106,7 +113,8 @@ func (m *WordModel) GetAllWords() ([]Word, int, float64, error) {
 		var wordString string
 		var time time.Time
 		var t1, t2, t3, t4, description sql.NullString
-		err := rows.Scan(&id, &time, &wordString, &t1, &t2, &t3, &t4, &description)
+		var timesQuizzed, timesCorrect, timesFalse int
+		err := rows.Scan(&id, &time, &wordString, &t1, &t2, &t3, &t4, &description, &timesQuizzed, &timesCorrect, &timesFalse)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -119,6 +127,9 @@ func (m *WordModel) GetAllWords() ([]Word, int, float64, error) {
 			Translation4: t4.String,
 			Time:         time,
 			Description:  description.String,
+			TimesQuizzed: timesQuizzed,
+			TimesCorrect: timesCorrect,
+			TimesFalse:   timesFalse,
 		}
 		words = append(words, word)
 	}
@@ -230,4 +241,30 @@ func (m *WordModel) updateWord(translations []GptWord) ([]string, error) {
 		translatedWords = append(translatedWords, word)
 	}
 	return translatedWords, nil
+}
+
+func (m *WordModel) EvalAnswer(selectedTranslation string, wordId int) error {
+	updateWord := "update words set timesQuizzed = ?, timesCorrect = ?, timesFalse = ? where id = ?;"
+
+	var word Word
+
+	if err := m.Db.QueryRow("select timesQuizzed, timesCorrect, timesFalse, t_1 from words where id = ?", wordId).Scan(&word.TimesQuizzed, &word.TimesCorrect, &word.TimesFalse, &word.Translation1); err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v", word)
+
+	if word.Translation1 == selectedTranslation {
+		_, err := m.Db.Exec(updateWord, word.TimesQuizzed+1, word.TimesCorrect+1, word.TimesFalse, wordId)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := m.Db.Exec(updateWord, word.TimesQuizzed+1, word.TimesCorrect, word.TimesFalse+1, wordId)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

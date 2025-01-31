@@ -1,25 +1,29 @@
 "use client";
 
-import React from "react";
-import {Word} from "../types/word";
-import {Button} from "@mui/material";
-import {QuizButtonList, QuizContainer} from "./quizPage.style";
-import {OverridableStringUnion} from "@mui/types";
+import React, { useActionState } from "react";
+import { AllWords, TranslationKey } from "../types/word";
+import { Button } from "@mui/material";
+import { QuizButtonList, QuizContainer } from "./page.style";
+import { OverridableStringUnion } from "@mui/types";
+import { selectAnswer } from "../lib/actions";
+
+const t_strings: TranslationKey[] = ['t_1', 't_2', 't_3', 't_4']
 
 export default function Quiz() {
-    const [allWords, setAllWords] = React.useState<{ allWords: Word[], percentageUntranslated: number }>();
+    const [allWords, setAllWords] = React.useState<AllWords>();
 
     const [currentWord, setCurrentWord] = React.useState(0);
     const [wasCorrect, setWasCorrect] = React.useState(false);
     const [score, setScore] = React.useState(0);
 
-    const useEffect = React.useEffect(() => {
-        fetch("http://10.212.46.13:8080/all-words")
+    React.useEffect(() => {
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/all-words`)
             .then((res) => res.json())
             .then((data) => setAllWords(data));
     }, []);
 
-    const handleSelect = (selectedWord: string) => {
+    const handleSelect = async (selectedWord: string, wordId: number) => {
+        selectAnswer(wordId, selectedWord);
         if (selectedWord === allWords?.allWords[currentWord]?.t_1) {
             setScore(score + 1);
             setWasCorrect(true);
@@ -30,7 +34,7 @@ export default function Quiz() {
         }
     };
 
-    function shuffleArray(array) {
+    function shuffleArray(array: TranslationKey[]) {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1)); // Random index from 0 to i
             [array[i], array[j]] = [array[j], array[i]]; // Swap elements
@@ -38,26 +42,26 @@ export default function Quiz() {
         return array;
     }
 
-    const [indices, setIndices] = React.useState(shuffleArray(['t_1', 't_2', 't_3', 't_4']))
+    const [indices, setIndices] = React.useState(shuffleArray(t_strings))
 
     React.useEffect(() => {
-        setIndices(shuffleArray(['t_1', 't_2', 't_3', 't_4']))
+        setIndices(shuffleArray(t_strings))
     }, [currentWord]);
 
     return (
         <QuizContainer>
             {allWords && allWords.allWords && allWords?.allWords.length > 0 && (
                 <>
-                    <h2 style={{marginBottom: "50px"}}>
+                    <h2 style={{ marginBottom: "50px" }}>
                         Current word: {allWords?.allWords[currentWord || 0]?.word}
                         {wasCorrect && <span> - Correct!</span>}
                     </h2>
                     <QuizButtonList>
-                        {indices.map((index) => (
+                    {indices.map((index: TranslationKey ) => (
                             <Button variant='contained'
-                                    color={wasCorrect && index === 't_1' ? 'success' : 'primary' as OverridableStringUnion<'success' | 'primary'>}
-                                    key={index}
-                                    onClick={() => handleSelect(allWords.allWords[currentWord || 0]?.[index])}>
+                                color={wasCorrect && index === 't_1' ? 'success' : 'primary' as OverridableStringUnion<'success' | 'primary'>}
+                                key={index}
+                                onClick={() => handleSelect(allWords.allWords[currentWord || 0]?.[index], allWords.allWords[currentWord].id)}>
                                 {allWords.allWords[currentWord || 0]?.[index]}
                             </Button>
                         ))}
