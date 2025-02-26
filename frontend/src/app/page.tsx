@@ -1,8 +1,10 @@
-import React from 'react'
-import Main from './components/main'
+"use client" 
 
-export default function Home() {
+import React from 'react'
+import Home from './home/page';
+
+export default function Main() {
     return (
-        <Main/>
+        <Home/>
     )
 }

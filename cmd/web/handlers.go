@@ -2,12 +2,24 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/eyko139-language-app/models"
 	"io"
 	"net/http"
+	"strconv"
+
+	"github.com/eyko139-language-app/models"
+	"github.com/gorilla/websocket"
+	"github.com/julienschmidt/httprouter"
 
 	mod "github.com/eyko139-language-app/gpt"
 )
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+    CheckOrigin: func(r *http.Request) bool {
+        return true
+    },
+}
 
 func (a *App) getHome() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +32,7 @@ func (a *App) getHome() http.HandlerFunc {
 			}
 		}
 
+		w.Header().Add("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 
 		homeView := struct {
@@ -75,7 +88,8 @@ func (a *App) wordPost() http.HandlerFunc {
 
 func (a *App) translate() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		translations, err := a.WordModel.Translate()
+        a.WsConn.WriteMessage(1, []byte("1Translating..."))
+		translations, err := a.WordModel.Translate(a.WsConn)
 		if err != nil {
 			a.ErrorLog.Println("error during translation")
 			_, err = w.Write([]byte("error during translation"))
@@ -108,5 +122,32 @@ func (a *App) botHook() http.HandlerFunc {
 		if err != nil {
 			a.ErrorLog.Println(err)
 		}
+	}
+}
+func (a *App) submitAnswerPost() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := httprouter.ParamsFromContext(r.Context())
+		id, err := strconv.Atoi(params.ByName("id"))
+		if err != nil {
+			a.ErrorLog.Printf("Failed to parse int wordID %s", err)
+		}
+
+		translation := params.ByName("translation")
+		a.InfoLog.Printf("submited answer for %s: %s", id, translation)
+		err = a.WordModel.EvalAnswer(translation, id)
+		if err != nil {
+			a.ErrorLog.Printf("Error submitting answer %s", err)
+		}
+	}
+}
+
+func (a *App) initSocket() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			a.ErrorLog.Printf("WS connection could not be established %s", err)
+			return
+		}
+		a.WsConn = conn
 	}
 }

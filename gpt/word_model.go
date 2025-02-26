@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/eyko139-language-app/cmd/env"
+	"github.com/gorilla/websocket"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -20,7 +21,10 @@ const (
         t_2 TEXT NULL,
         t_3 TEXT NULL,
         t_4 TEXT NULL,
-        description TEXT NULL
+        description TEXT NULL,
+        timesQuizzed INTEGER DEFAULT 0,
+        timesCorrect INTEGER DEFAULT 0, 
+        timesFalse INTEGER DEFAULT 0
         );
         `
 )
@@ -34,14 +38,18 @@ type Word struct {
 	Translation4 string    `json:"t_4" db:"t_4"`
 	Time         time.Time `json:"time" db:"time"`
 	Description  string    `json:"description" db:"description"`
+	TimesQuizzed int       `json:"timesQuizzed" db:"timesQuizzed"`
+	TimesCorrect int       `json:"timesCorrect" db:"timesCorrect"`
+	TimesFalse   int       `json:"timesFalse" db:"timesFalse"`
 }
 
 type WordModelInt interface {
 	GetWord(word string) (Word, error)
 	GetAllWords() ([]Word, int, float64, error)
 	AddWord(word string) (int64, error)
-	Translate() ([]string, error)
+	Translate(ws *websocket.Conn) ([]string, error)
 	AddText(text string) error
+	EvalAnswer(selectedTranslation string, wordId int) error
 }
 
 type WordModel struct {
@@ -106,7 +114,8 @@ func (m *WordModel) GetAllWords() ([]Word, int, float64, error) {
 		var wordString string
 		var time time.Time
 		var t1, t2, t3, t4, description sql.NullString
-		err := rows.Scan(&id, &time, &wordString, &t1, &t2, &t3, &t4, &description)
+		var timesQuizzed, timesCorrect, timesFalse int
+		err := rows.Scan(&id, &time, &wordString, &t1, &t2, &t3, &t4, &description, &timesQuizzed, &timesCorrect, &timesFalse)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -119,6 +128,9 @@ func (m *WordModel) GetAllWords() ([]Word, int, float64, error) {
 			Translation4: t4.String,
 			Time:         time,
 			Description:  description.String,
+			TimesQuizzed: timesQuizzed,
+			TimesCorrect: timesCorrect,
+			TimesFalse:   timesFalse,
 		}
 		words = append(words, word)
 	}
@@ -158,7 +170,7 @@ func (m *WordModel) AddWord(newWord string) (int64, error) {
 	return id, nil
 }
 
-func (m *WordModel) Translate() ([]string, error) {
+func (m *WordModel) Translate(ws *websocket.Conn) ([]string, error) {
 	rows, err := m.Db.Query("select id, time, word from words where t_1 is null;")
 
 	if err != nil {
@@ -177,11 +189,15 @@ func (m *WordModel) Translate() ([]string, error) {
 		}
 		wordsToTranslate = append(wordsToTranslate, word)
 	}
+    ws.WriteMessage(1, []byte(fmt.Sprintf("1Found %d words", len(wordsToTranslate))))
 
 	defer rows.Close()
 
-	fmt.Println(wordsToTranslate)
+    if len(wordsToTranslate) == 0 {
+        return nil, nil
+    }
 	translations := m.GPT.GetTranslations(wordsToTranslate)
+    ws.WriteMessage(1, []byte(fmt.Sprintf("2Translated %d words", len(translations))))
 
 	return m.updateWord(translations)
 
@@ -230,4 +246,30 @@ func (m *WordModel) updateWord(translations []GptWord) ([]string, error) {
 		translatedWords = append(translatedWords, word)
 	}
 	return translatedWords, nil
+}
+
+func (m *WordModel) EvalAnswer(selectedTranslation string, wordId int) error {
+	updateWord := "update words set timesQuizzed = ?, timesCorrect = ?, timesFalse = ? where id = ?;"
+
+	var word Word
+
+	if err := m.Db.QueryRow("select timesQuizzed, timesCorrect, timesFalse, t_1 from words where id = ?", wordId).Scan(&word.TimesQuizzed, &word.TimesCorrect, &word.TimesFalse, &word.Translation1); err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v", word)
+
+	if word.Translation1 == selectedTranslation {
+		_, err := m.Db.Exec(updateWord, word.TimesQuizzed+1, word.TimesCorrect+1, word.TimesFalse, wordId)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := m.Db.Exec(updateWord, word.TimesQuizzed+1, word.TimesCorrect, word.TimesFalse+1, wordId)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

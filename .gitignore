@@ -8,5 +8,9 @@ _go
 tmp
 .envrc
 environments
+<<<<<<< HEAD
+=======
+alacritty
+>>>>>>> 79e6c85419e3d84533858b3a2eb042541b06bdbf
 
 

@@ -6,12 +6,14 @@ import (
 
 	"github.com/eyko139-language-app/cmd/env"
 	"github.com/eyko139-language-app/gpt"
+	"github.com/gorilla/websocket"
 )
 
 type App struct {
 	ErrorLog  *log.Logger
 	InfoLog   *log.Logger
 	WordModel words.WordModelInt
+	WsConn    *websocket.Conn
 }
 
 func NewApp(env *env.Env) *App {
